@@ -1,3 +1,9 @@
+;;;; caro-busq.lisp
+
+(in-package #:caro-busq)
+
+;;; "caro-busq" goes here. Hacks and glory await!
+
  ;;; -------------------------------------------------------------------------
 ;;; ***************
 ;;; * TIC TAC TOE *
@@ -17,6 +23,7 @@
 
 ;;; Variables
 (defparameter *board-size* 10)
+(defparameter *board* nil)
 
 (defparameter *pressed-color* (sdl:color :r 150 :g 150 :b 150))
 (defparameter *board-color* (sdl:color :r 200 :g 200 :b 200))
@@ -93,8 +100,7 @@
 		:title-caption "Tic Tac Toe"
 		:icon-caption "Tic Tac Toe")
     
-    (setf (sdl:frame-rate) 60)
-    (sdl:with-events ()
+    (setf (sdl:frame-rate) 60)    (sdl:with-events ()
       (:quit-event () t)
       (:key-down-event () (sdl:push-quit-event))
       (:idle ()

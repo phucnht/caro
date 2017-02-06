@@ -1,0 +1,6 @@
+;;;; caro-busq.lisp
+
+(in-package #:caro-busq)
+
+;;; "caro-busq" goes here. Hacks and glory await!
+
