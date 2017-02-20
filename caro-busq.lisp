@@ -8,14 +8,14 @@
 (defparameter *gfx-root* (merge-pathnames "gfx/" *data-root*))
 
 ;;;; Game Params
-(defparameter *cell-size* 200)
-(defparameter *cell-border* 10)
+(defparameter *cell-size* 50)
+(defparameter *cell-border* (floor (/ *cell-size* 10)))
 (defparameter *cell-center* (floor (/ *cell-size* 2)))
 
 (defparameter *radius* (floor (* *cell-center* 0.95)))
 
-(defparameter *board-rows* 3)
-(defparameter *board-cols* 3)
+(defparameter *board-rows* 5)
+(defparameter *board-cols* 5)
 
 (defparameter *game-width*
   (+ (* *cell-size* *board-cols*) (* *cell-border* (1+ *board-cols*))))
@@ -28,6 +28,8 @@
 (defparameter *board* nil)
 (defparameter *current-player* nil)
 
+(defparameter *win-number* 3)
+
 ;;;; Drawing  
 
 (defun point (x y)
@@ -37,7 +39,7 @@
 (defun draw-line (x1 y1 x2 y2)
   "Draw a line from top left corner with start coordinates x1 y1 
    and end coordinates x2 y2."
-  (sdl:draw-line (point x1 y1) (point x2 y2) :color sdl:*black*))
+  (sdl:draw-line (point x1 y1) (point x2 y2) :color sdl:*red*))
 
 (defun draw-cross (x y)
   "Draw a cross from top left corner with coordinates x y."
@@ -49,10 +51,10 @@
     (draw-line (+ x2 *cell-size*) y1 x1 (+ y2 *cell-size*))))
 
 (defun draw-circle (x y)
-  "Draw cirle from center with coordinates x y."
+  "Draw cirle from center with coordinat1es x y."
   (sdl:draw-circle (point (+ x *cell-center*) (+ y *cell-center*))
 		   *radius*
-		   :color sdl:*black*))			      
+		   :color sdl:*blue*))			      
 
 (defun draw-rectangle (x y h w)
   "Draw rectangle from top left corner with coordinates x y 
@@ -81,10 +83,9 @@
 
 (defun toggle-player ()
   "Switch player X/O. Begin game with X player."
-  (case *current-player*
-    (X (setf *current-player* 'O))
-    (O (setf *current-player* 'X))
-    (otherwise (setf *current-player* 'X))))
+  (if (eq *current-player* 'X) 
+      (setf *current-player* 'O)
+      (setf *current-player* 'X)))
 
 ;;;; Board
 
@@ -113,8 +114,9 @@
 
 (defun get-cell-pos (x y)
   "Get list of cell's position row/col from coordinates x/y)"
-  (list (floor x *cell-size*)
-	(floor y *cell-size*)))
+  (let ((cell (+ *cell-size* (* 2 *cell-border*))))
+    (list (floor x cell)
+	  (floor y cell))))
 
 ;;;; Game Flow
 
@@ -123,12 +125,73 @@
   (setf *current-player* nil)
   (setf *board* (make-board)))  
 
-(defun cell-clicked (row col)
-  "Check if the cell is clicked. (Different nil)"
+(defun is-cell-clicked (row col)
+  "Check if the cell is clicked. If not, set value for cell. Else,
+   return true."
   (unless (get-cell-value row col)
     (set-cell-value *current-player* row col)
     t))
-    
+
+;;;; Check winner
+
+(defun is-full-board (rows cols)
+  "Check if the board is full or not. If not return nil. Else true."
+  (loop for row from 0 to (1- rows) do
+       (loop for col from 0 to (1- cols) do
+	    (unless (get-cell-value col row)
+	      (return-from is-full-board nil))))
+  t)
+
+(defun is-winner (rows cols)
+  "Check if current player is win or not by checking the straight
+   lines and diagonals."
+  (or (is-diagonals-enough rows)
+      (is-lines-enough rows cols)))
+
+(defun is-lines-enough (rows cols)
+  "Check straight lines full"
+  (loop for i from 0 to (1- rows) thereis
+     (loop for j from 0 to (1- cols) thereis
+	  (or (is-rows-enough i j)
+	      (is-cols-enough i j)))))
+
+(defun is-diagonals-enough (rows)
+  "Check diagonals lines full"
+  (loop for i from 0 to (1- rows) thereis
+       (or (is-topleft-bottomright-enough i)
+	   (is-bottomleft-topright-enough i))))
+      
+(defun is-rows-enough (i j)
+  "Check rows straight"
+  (let ((end (+ j (1- *win-number*))))
+    (loop for col from j to end always
+	 (and (< end *board-cols*)
+	      (eq (get-cell-value col i) *current-player*)))))
+
+(defun is-cols-enough (i j)
+  "Check cols straight"
+  (let ((end (+ i (1- *win-number*))))
+    (loop for row from i to end always
+	 (and (< end *board-rows*)
+	      (eq (get-cell-value j row) *current-player*)))))
+
+(defun is-topleft-bottomright-enough (i)
+  "Check top left - bottom right straight"
+  (let ((end (+ i (1- *win-number*))))
+    (loop for j from i to end always
+	 (and (< end *board-rows*)
+	      (< end *board-cols*)
+	      (eq (get-cell-value j j) *current-player*)))))
+
+(defun is-bottomleft-topright-enough (i)
+  "Check bottom left - top right straight"
+  (let ((end (+ i (1- *win-number*))))
+    (loop for j from i to end always
+	 (and (< end *board-rows*)
+	      (< end *board-cols*)
+	      (> end 0)
+	      (eq (get-cell-value (- end j) j) *current-player*)))))
+
 ;;;; Events & Rendering
 
 (defun render ()
@@ -141,7 +204,14 @@
   "Realize a turn by click to the cell then switch player."
   (let ((row (first (get-cell-pos x y)))
 	(col (second (get-cell-pos x y))))
-    (when (cell-clicked row col)
+    (when (is-cell-clicked row col)
+      (cond
+	((is-winner *board-rows* *board-cols*)
+	 (format t "~a wins! ~%" *current-player*)
+	 (reset-game))
+	((is-full-board *board-rows* *board-cols*)
+	 (format t "Tie! ~%")
+	 (reset-game)))
       (toggle-player))))
 
 ;;;; Main
