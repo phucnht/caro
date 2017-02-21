@@ -23,7 +23,7 @@
 (defparameter *game-height*
   (+ (* *cell-size* *board-rows*) (* *cell-border* (1+ *board-rows*))))
 
-(defparameter *game-state* 0) ; 0:menu/intro, 1:in game, 2:game over
+(defparameter *game-state* 0) ; 0:menu/intro, 1:in game, 
 
 (defparameter *board* nil)
 (defparameter *current-player* nil)
@@ -192,6 +192,77 @@
 	      (> end 0)
 	      (eq (get-cell-value (- end j) j) *current-player*)))))
 
+;;;; Tree Building
+
+(defun first-child (tree)
+  "Returns a reference to the first child of the node passed in,
+  or nil if this node does not have children."
+  (if (null tree)
+      nil
+      (cdar tree)))
+
+(defun next-sibling (tree)
+  "Returns a reference to the next sibling of the node passed in,
+  or nil if this node does not have any siblings."
+  (cdr tree))
+
+(defun data (tree)
+  "Returns the information contained in this node."
+  (caar tree))
+
+(defun make-tree (data)
+  "Creates a new node that contains 'data' as its data."
+  (cons (cons data nil) nil))
+
+(defun add-child (tree child)
+  "Takes two nodes created with 'make-tree' and adds the
+  second node as a child of the first. Returns the first node,
+  which will be modified."
+  (nconc (car tree) child)
+  tree)
+
+(defun is-leaf (tree)
+  (listp (first-child tree)))
+
+(defun count-leaves (tree)
+  (cond ((is-leaf tree) 1)
+	(t (count-leaves-in-forest (first-child tree)))))
+
+(defun count-leaves-in-forest (forest)
+  (if (null forest)
+      0
+      (+ (count-leaves (first-child forest))
+	 (count-leaves-in-forest (next-sibling forest)))))
+
+;;;; AI
+
+(defun min-max (tree)
+  (let ((val (data tree)))
+    (if (not (null tree))
+	(setf val (min-max-aux val tree *current-player*)))))
+
+(defun min-max-aux (val tree player)
+  (let ((info (data tree)))
+    ;; if not leaf  
+    (cond ((is-leaf tree) (setf val info))
+	  ;; Traverse children
+	  (t (loop for i from 0 to (1- (count-leaves tree)) do
+		  (if (eq player 'X)
+		      (progn
+			(setf info
+			      (max info
+				   (min-max-aux info
+						(list (nth i (first-child tree))) 'O)))
+			(setf val info))
+		      (progn
+			(setf info
+			      (min info
+				   (min-max-aux info
+						(list (nth i (first-child tree))) 'O)))
+			
+			(setf val info))))))))
+
+	      
 ;;;; Events & Rendering
 
 (defun render ()
