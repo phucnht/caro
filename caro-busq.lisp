@@ -2,17 +2,17 @@
 ;;;; (ql:quickload '("lispbuilder-sdl" "lispbuilder-sdl-ttf" "lispbuilder-sdl-gfx"))
 
 ;;;; Root Params
-(defparameter *data-root* "caro-busq/")
-(defparameter *audio-root* (merge-pathnames "audio/" *data-root*))
-(defparameter *font-root* (merge-pathnames "fonts/" *data-root*))
-(defparameter *gfx-root* (merge-pathnames "gfx/" *data-root*))
+(defparameter *root-path* "caro-busq")
+(defparameter *gfx-path* (merge-pathnames "gfx/" *root-path*))
 
-;;;; Game Params
+;;;; GFX
+(defparameter *gfx-background* (merge-pathnames "background.png" *gfx-path*))
+(defparameter *gfx-X* (merge-pathnames "X.png" *gfx-path*))
+(defparameter *gfx-O* (merge-pathnames "O.png" *gfx-path*))
+
+;;;; Game Params-
 (defparameter *cell-size* 50)
-(defparameter *cell-border* (floor (/ *cell-size* 10)))
-(defparameter *cell-center* (floor (/ *cell-size* 2)))
-
-(defparameter *radius* (floor (* *cell-center* 0.95)))
+(defparameter *cell-border* (floor *cell-size* 10))
 
 (defparameter *board-rows* 5)
 (defparameter *board-cols* 5)
@@ -23,47 +23,22 @@
 (defparameter *game-height*
   (+ (* *cell-size* *board-rows*) (* *cell-border* (1+ *board-rows*))))
 
-(defparameter *game-state* 0) ; 0:menu/intro, 1:in game, 
-
 (defparameter *board* nil)
 (defparameter *current-player* nil)
 
 (defparameter *win-number* 3)
 
-;;;; Drawing  
+;;;; Draw image
 
-(defun point (x y)
-  "Draw a point with coordinates x y. Return vector."
-  (sdl:point :x x :y y))
+(defun draw-background (x y)
+  (sdl:draw-surface-at-*
+   (sdl:load-image *gfx-background* :color-key sdl:*white*) x y))
 
-(defun draw-line (x1 y1 x2 y2)
-  "Draw a line from top left corner with start coordinates x1 y1 
-   and end coordinates x2 y2."
-  (sdl:draw-line (point x1 y1) (point x2 y2) :color sdl:*red*))
+(defun draw-player (player x y)
+  (sdl:draw-surface-at-*
+   (sdl:load-image player :color-key sdl:*white*) x y))
 
-(defun draw-cross (x y)
-  "Draw a cross from top left corner with coordinates x y."
-  (let ((x1 (+ x *cell-border*))
-	(x2 (- x *cell-border*))
-	(y1 (+ y *cell-border*))
-	(y2 (- y *cell-border*)))
-    (draw-line x1 y1 (+ x2 *cell-size*) (+ y2 *cell-size*))
-    (draw-line (+ x2 *cell-size*) y1 x1 (+ y2 *cell-size*))))
-
-(defun draw-circle (x y)
-  "Draw cirle from center with coordinat1es x y."
-  (sdl:draw-circle (point (+ x *cell-center*) (+ y *cell-center*))
-		   *radius*
-		   :color sdl:*blue*))			      
-
-(defun draw-rectangle (x y h w)
-  "Draw rectangle from top left corner with coordinates x y 
-   and height h and weight w."
-  (sdl:rectangle :x x :y y :w w :h h))
-
-(defun draw-box (rect)
-  "Draw a filled rectangle rect."
-  (sdl:draw-box rect :color sdl:*white*))
+;;;; Draw board
 
 (defun draw-board (rows cols)
   "Draw the gameboard with number of rows and cols. Here we use
@@ -74,16 +49,16 @@
        (loop for col from 0 to (1- cols) do
 	    (let ((x (first (get-cell-coordinate row col)))
 		  (y (second (get-cell-coordinate row col))))
-	      (draw-box (draw-rectangle x y *cell-size* *cell-size*))
+	      (draw-background x y)
 	      (case (get-cell-value row col)
-		(X (draw-cross x y))
-		(O (draw-circle x y)))))))
+		(X (draw-player *gfx-X* x y))
+		(O (draw-player *gfx-O* x y)))))))
 
 ;;;; Player
 
 (defun toggle-player ()
   "Switch player X/O. Begin game with X player."
-  (if (eq *current-player* 'X) 
+  (if (eq *current-player* 'X)
       (setf *current-player* 'O)
       (setf *current-player* 'X)))
 
@@ -114,7 +89,7 @@
 
 (defun get-cell-pos (x y)
   "Get list of cell's position row/col from coordinates x/y)"
-  (let ((cell (+ *cell-size* (* 2 *cell-border*))))
+  (let ((cell (+ *cell-size* *cell-border*)))
     (list (floor x cell)
 	  (floor y cell))))
 
@@ -128,7 +103,8 @@
 (defun is-cell-clicked (row col)
   "Check if the cell is clicked. If not, set value for cell. Else,
    return true."
-  (unless (get-cell-value row col)
+  (unless (get-cell-value row col)    
+    (format t "pos: ~D ~D ~%" row col)
     (set-cell-value *current-player* row col)
     t))
 
@@ -142,58 +118,53 @@
 	      (return-from is-full-board nil))))
   t)
 
-(defun is-winner (rows cols)
+(defun is-winner (x y)
   "Check if current player is win or not by checking the straight
    lines and diagonals."
-  (or (is-diagonals-enough rows)
-      (is-lines-enough rows cols)))
+  (or (is-straight-enough x y 0 1) ;; row
+      (is-straight-enough x y 1 0) ;; col
+      (is-straight-enough x y 1 1) ;; top left - bottom right
+      (is-straight-enough x y -1 1))) ;; top right - bottom left 
+			  
 
-(defun is-lines-enough (rows cols)
-  "Check straight lines full"
-  (loop for i from 0 to (1- rows) thereis
-     (loop for j from 0 to (1- cols) thereis
-	  (or (is-rows-enough i j)
-	      (is-cols-enough i j)))))
+(defun is-straight-enough (x y dx dy)
+  "Does player have enough marks in a straight line
+   from position (x y) in direction (+/-dx +/-dy)?"
+  (= (1+ *win-number*) (+ (count-marks-straight x y (- dx) (- dy))
+			  (count-marks-straight x y dx dy))))
 
-(defun is-diagonals-enough (rows)
-  "Check diagonals lines full"
-  (loop for i from 0 to (1- rows) thereis
-       (or (is-topleft-bottomright-enough i)
-	   (is-bottomleft-topright-enough i))))
-      
-(defun is-rows-enough (i j)
-  "Check rows straight"
-  (let ((end (+ j (1- *win-number*))))
-    (loop for col from j to end always
-	 (and (< end *board-cols*)
-	      (eq (get-cell-value col i) *current-player*)))))
+(defun count-marks-straight (x y dx dy)
+  "Count player's marks from position (x y) in direction (dx dy)."
+  (if (and (< -1 x *board-rows*)
+	   (< -1 y *board-cols*)
+	   (eq (get-cell-value x y) *current-player*))
+      (1+ (count-marks-straight (+ x dx) (+ y dy) dx dy))
+      0))			     
 
-(defun is-cols-enough (i j)
-  "Check cols straight"
-  (let ((end (+ i (1- *win-number*))))
-    (loop for row from i to end always
-	 (and (< end *board-rows*)
-	      (eq (get-cell-value j row) *current-player*)))))
+;;;; Events & Rendering
 
-(defun is-topleft-bottomright-enough (i)
-  "Check top left - bottom right straight"
-  (let ((end (+ i (1- *win-number*))))
-    (loop for j from i to end always
-	 (and (< end *board-rows*)
-	      (< end *board-cols*)
-	      (eq (get-cell-value j j) *current-player*)))))
+(defun render ()
+  "Update the game by redrawing game board."
+  (sdl:clear-display sdl:*black*)
+  (draw-board *board-rows* *board-cols*)
+  (sdl:update-display))
 
-(defun is-bottomleft-topright-enough (i)
-  "Check bottom left - top right straight"
-  (let ((end (+ i (1- *win-number*))))
-    (loop for j from i to end always
-	 (and (< end *board-rows*)
-	      (< end *board-cols*)
-	      (> end 0)
-	      (eq (get-cell-value (- end j) j) *current-player*)))))
+(defun perform-turn (x y)
+  "Realize a turn by click to the cell then switch player."
+  (let ((row (first (get-cell-pos x y)))
+	(col (second (get-cell-pos x y))))
+    (when (is-cell-clicked row col)
+      (format t "in: ~D ~D ~%" row col)
+      (cond
+;;	((is-winner row col)
+;;	 (format t "~A wins! ~%" *current-player*)
+;;	 (reset-game))
+	((is-full-board *board-rows* *board-cols*)
+	 (format t "Tie! ~%")
+	 (reset-game)))
+      (toggle-player))))
 
 ;;;; Tree Building
-
 (defun first-child (tree)
   "Returns a reference to the first child of the node passed in,
   or nil if this node does not have children."
@@ -210,10 +181,6 @@
   "Returns the information contained in this node."
   (caar tree))
 
-(defun make-tree (data)
-  "Creates a new node that contains 'data' as its data."
-  (cons (cons data nil) nil))
-
 (defun add-child (tree child)
   "Takes two nodes created with 'make-tree' and adds the
   second node as a child of the first. Returns the first node,
@@ -222,13 +189,20 @@
   tree)
 
 (defun is-leaf (tree)
+  "Check if node is leaf"
   (listp (first-child tree)))
 
+(defun make-tree (data)
+  "Creates a new node that contains 'data' as its data."
+  (cons (cons data nil) nil))
+
 (defun count-leaves (tree)
+  "Count children of node"
   (cond ((is-leaf tree) 1)
 	(t (count-leaves-in-forest (first-child tree)))))
 
 (defun count-leaves-in-forest (forest)
+  "Count children in a node of children"
   (if (null forest)
       0
       (+ (count-leaves (first-child forest))
@@ -236,54 +210,12 @@
 
 ;;;; AI
 
-(defun min-max (tree)
-  (let ((val (data tree)))
-    (if (not (null tree))
-	(setf val (min-max-aux val tree *current-player*)))))
+(defun alphabeta (node depth maximizing-player)
+  (alphabeta-aux node depth -99999 99999 maximizing-player))
+  
+(defun alphabeta-aux (node depth alpha beta maximizing-player)
+  node depth alpha beta maximizing-player)
 
-(defun min-max-aux (val tree player)
-  (let ((info (data tree)))
-    ;; if not leaf  
-    (cond ((is-leaf tree) (setf val info))
-	  ;; Traverse children
-	  (t (loop for i from 0 to (1- (count-leaves tree)) do
-		  (if (eq player 'X)
-		      (progn
-			(setf info
-			      (max info
-				   (min-max-aux info
-						(list (nth i (first-child tree))) 'O)))
-			(setf val info))
-		      (progn
-			(setf info
-			      (min info
-				   (min-max-aux info
-						(list (nth i (first-child tree))) 'O)))
-			
-			(setf val info))))))))
-
-	      
-;;;; Events & Rendering
-
-(defun render ()
-  "Update the game by redrawing game board."
-  (sdl:clear-display sdl:*black*)
-  (draw-board *board-rows* *board-cols*)
-  (sdl:update-display))
-
-(defun perform-turn (x y)
-  "Realize a turn by click to the cell then switch player."
-  (let ((row (first (get-cell-pos x y)))
-	(col (second (get-cell-pos x y))))
-    (when (is-cell-clicked row col)
-      (cond
-	((is-winner *board-rows* *board-cols*)
-	 (format t "~a wins! ~%" *current-player*)
-	 (reset-game))
-	((is-full-board *board-rows* *board-cols*)
-	 (format t "Tie! ~%")
-	 (reset-game)))
-      (toggle-player))))
 
 ;;;; Main
 
